@@ -113,10 +113,19 @@ export class LeftPanelComponent implements OnDestroy, OnInit, AfterViewInit {
     this.order = savedOrder && new Set(savedOrder).size === new Set(this.order).size ? savedOrder : this.order;
 
     const savedIndex = Number(localStorage.getItem("left-panel-index"));
-    this.openFrame(savedIndex < this.items.length && this.items[savedIndex].enabled ? savedIndex : 1);
+    const restoredIndex = savedIndex < this.items.length && this.items[savedIndex].enabled ? savedIndex : 1;
+    // A versions request made before this panel existed (e.g. from the dashboard share dialog,
+    // which navigates into the workspace) wins over the last frame the user had open.
+    const pendingVersionsIndex = this.panelService.consumePendingVersionsPanel() ? this.versionsFrameIndex : -1;
+    this.openFrame(pendingVersionsIndex >= 0 ? pendingVersionsIndex : restoredIndex);
 
     this.width = Number(localStorage.getItem("left-panel-width")) || this.width;
     this.height = Number(localStorage.getItem("left-panel-height")) || this.height;
+  }
+
+  private get versionsFrameIndex(): number {
+    const index = this.items.findIndex(item => item.component === VersionsListComponent);
+    return index >= 0 && this.items[index].enabled ? index : -1;
   }
 
   private updateItemsWithConfig(): void {
@@ -135,6 +144,14 @@ export class LeftPanelComponent implements OnDestroy, OnInit, AfterViewInit {
     this.panelService.resetPanelStream.pipe(untilDestroyed(this)).subscribe(() => {
       this.resetPanelPosition();
       this.openFrame(1);
+    });
+    this.panelService.openVersionsPanelStream.pipe(untilDestroyed(this)).subscribe(() => {
+      // This panel is handling the request, so it must not be replayed on the next construction.
+      this.panelService.consumePendingVersionsPanel();
+      const index = this.versionsFrameIndex;
+      if (index >= 0) {
+        this.openFrame(index);
+      }
     });
   }
 

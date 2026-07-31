@@ -17,6 +17,223 @@
  * under the License.
  */
 
+/* ---------------------------------------------------------------------------
+ * Workflow share dialog
+ * ------------------------------------------------------------------------ */
+
+.share-dialog {
+  display: flex;
+  flex-direction: column;
+  gap: 20px;
+}
+
+.share-dialog-title {
+  font-size: 18px;
+  font-weight: 500;
+  line-height: 1.3;
+  /* On top of the dialog's row gap, so the title reads as a header rather than another group. */
+  margin: 0 0 6px;
+}
+
+.share-section-title {
+  font-size: 14px;
+  font-weight: 600;
+  margin: 0 0 4px;
+}
+
+/* Section heading with a trailing action (the access-list reload). */
+.share-section-header {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  margin-bottom: 6px;
+
+  .share-section-title {
+    margin: 0;
+  }
+}
+
+.share-section-action {
+  color: rgba(0, 0, 0, 0.45);
+}
+
+/* Collaborator input: bordered box with a floating legend, per the design. */
+.collaborator-field {
+  position: relative;
+  border: 1px solid var(--ant-primary-color, #1890ff);
+  border-radius: 4px;
+  padding: 8px 10px;
+  min-height: 52px;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  cursor: text;
+  transition: box-shadow 0.2s;
+
+  &:focus-within {
+    box-shadow: 0 0 0 2px rgba(24, 144, 255, 0.2);
+  }
+
+  &.collaborator-field-disabled {
+    border-color: #d9d9d9;
+    background-color: #f5f5f5;
+    cursor: not-allowed;
+  }
+}
+
+.collaborator-legend {
+  position: absolute;
+  top: -0.75em;
+  left: 10px;
+  padding: 0 4px;
+  background-color: #fff;
+  color: var(--ant-primary-color, #1890ff);
+  font-size: 13px;
+  line-height: 1;
+
+  .collaborator-field-disabled & {
+    color: rgba(0, 0, 0, 0.45);
+    background-color: transparent;
+  }
+}
+
+/* Tags and the input share the growing half of the box; the level/Share controls stay put. */
+.collaborator-entry {
+  flex: 1 1 auto;
+  min-width: 0;
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  align-content: center;
+  gap: 6px;
+}
+
+.collaborator-actions {
+  flex: 0 0 auto;
+  display: flex;
+  align-items: center;
+  gap: 6px;
+}
+
+.collaborator-level {
+  color: rgba(0, 0, 0, 0.45);
+  padding: 0 4px;
+}
+
+.collaborator-input {
+  flex: 1 1 120px;
+  min-width: 160px;
+  border: none;
+  outline: none;
+  background: transparent;
+  font-size: 14px;
+  padding: 2px 0;
+
+  &::placeholder {
+    color: rgba(0, 0, 0, 0.25);
+  }
+}
+
+.collaborator-tag {
+  margin: 0;
+}
+
+/* Users with access */
+.access-row {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 6px 0;
+}
+
+.access-row-identity {
+  display: flex;
+  flex-direction: column;
+  min-width: 0;
+  flex: 1;
+}
+
+.access-row-name {
+  font-size: 14px;
+  line-height: 1.3;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.access-row-email {
+  font-size: 12px;
+  color: rgba(0, 0, 0, 0.45);
+  text-decoration: underline;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+/* Access level, "Owner" and visibility all sit in one right-aligned column so they line up
+ * down the right edge of the dialog. */
+.access-row-control {
+  flex: 0 0 auto;
+  display: flex;
+  align-items: center;
+  justify-content: flex-end;
+  color: rgba(0, 0, 0, 0.45);
+}
+
+.access-row-control-static {
+  /* Matches the trailing padding of the buttons in the same column. */
+  padding-right: 4px;
+}
+
+.access-row-privilege,
+.visibility-select {
+  padding: 0 4px;
+  color: rgba(0, 0, 0, 0.45);
+}
+
+.access-list-empty {
+  color: rgba(0, 0, 0, 0.45);
+  padding: 8px 0;
+}
+
+/* General access */
+.visibility-row {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+}
+
+.visibility-label {
+  flex: 1;
+  min-width: 0;
+}
+
+.visibility-label-title {
+  font-size: 14px;
+  line-height: 1.4;
+}
+
+.visibility-label-hint {
+  font-size: 12px;
+  color: rgba(0, 0, 0, 0.45);
+}
+
+/* Footer */
+.share-dialog-footer {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  margin-top: 4px;
+}
+
+.share-dialog-footer-spacer {
+  flex: 1;
+}
+
+/* ---------------------------------------------------------------------------
+ * Legacy layout (dataset / project / computing unit)
+ * ------------------------------------------------------------------------ */
+
 .input-group {
   display: flex;
   align-items: center;

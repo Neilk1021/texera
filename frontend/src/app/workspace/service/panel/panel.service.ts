@@ -26,6 +26,10 @@ import { Injectable } from "@angular/core";
 export class PanelService {
   private closePanelSubject = new Subject<void>();
   private resetPanelSubject = new Subject<void>();
+  private openVersionsPanelSubject = new Subject<void>();
+  // Set when the versions panel is requested before the left panel exists, e.g. from the
+  // dashboard, where the request has to survive the navigation into the workspace.
+  private versionsPanelPending = false;
 
   get resetPanelStream() {
     return this.resetPanelSubject.asObservable();
@@ -41,5 +45,28 @@ export class PanelService {
 
   closePanels() {
     this.closePanelSubject.next();
+  }
+
+  get openVersionsPanelStream() {
+    return this.openVersionsPanelSubject.asObservable();
+  }
+
+  /**
+   * Asks the left panel to show the version list. The request is also recorded so a left panel
+   * that only gets created after the caller navigates into the workspace still honors it.
+   */
+  openVersionsPanel() {
+    this.versionsPanelPending = true;
+    this.openVersionsPanelSubject.next();
+  }
+
+  /**
+   * Returns whether the versions panel was requested while no left panel was listening, clearing
+   * the request so it is only honored once.
+   */
+  consumePendingVersionsPanel(): boolean {
+    const pending = this.versionsPanelPending;
+    this.versionsPanelPending = false;
+    return pending;
   }
 }

@@ -461,7 +461,8 @@ describe("MenuComponent", () => {
 
       expect(createSpy).toHaveBeenCalledTimes(1);
       const config = createSpy.mock.calls[0][0] as ModalOptions;
-      expect(config.nzTitle).toBe("Share this workflow with others");
+      // The workflow share dialog renders its own title, so the modal is headerless.
+      expect(config.nzTitle).toBeUndefined();
       expect(config.nzData).toEqual(
         expect.objectContaining({
           writeAccess: true,

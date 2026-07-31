@@ -21,10 +21,11 @@ import { TestBed } from "@angular/core/testing";
 import { HttpClientTestingModule } from "@angular/common/http/testing";
 import { NoopAnimationsModule } from "@angular/platform-browser/animations";
 import { HttpErrorResponse } from "@angular/common/http";
-import { of, throwError } from "rxjs";
+import { EMPTY, of, throwError } from "rxjs";
 
 import { NZ_MODAL_DATA, NzModalRef, NzModalService } from "ng-zorro-antd/modal";
 import { NzMessageService } from "ng-zorro-antd/message";
+import { Router } from "@angular/router";
 
 import { ShareAccessComponent } from "./share-access.component";
 import { ShareAccessService } from "../../../service/user/share-access/share-access.service";
@@ -35,12 +36,15 @@ import { DatasetService } from "../../../service/user/dataset/dataset.service";
 import { WorkflowPersistService } from "src/app/common/service/workflow-persist/workflow-persist.service";
 import { WorkflowActionService } from "src/app/workspace/service/workflow-graph/model/workflow-action.service";
 import { Privilege } from "../../../type/share-access.interface";
+import { PanelService } from "src/app/workspace/service/panel/panel.service";
+import { USER_WORKSPACE } from "../../../../app-routing.constant";
 
 interface SetupOptions {
   type?: string;
   id?: number;
   inWorkspace?: boolean;
   currentEmail?: string | undefined;
+  name?: string;
 }
 
 describe("ShareAccessComponent", () => {
@@ -64,17 +68,19 @@ describe("ShareAccessComponent", () => {
     updateDatasetPublicity: ReturnType<typeof vi.fn>;
   };
   let workflowActionSpy: { setWorkflowIsPublished: ReturnType<typeof vi.fn> };
+  let routerSpy: { navigate: ReturnType<typeof vi.fn>; events: typeof EMPTY };
   let userServiceCurrentEmail: string | undefined;
   let capturedModalConfigs: any[];
 
   function setupComponent(opts: SetupOptions = {}): ShareAccessComponent {
-    const { type = "workflow", id = 1, inWorkspace = false, currentEmail = "me@example.com" } = opts;
+    const { type = "workflow", id = 1, inWorkspace = false, currentEmail = "me@example.com", name = "Example" } = opts;
     userServiceCurrentEmail = currentEmail;
 
     TestBed.configureTestingModule({
       imports: [HttpClientTestingModule, NoopAnimationsModule, ShareAccessComponent],
       providers: [
-        { provide: NZ_MODAL_DATA, useValue: { type, id, allOwners: [], inWorkspace } },
+        { provide: NZ_MODAL_DATA, useValue: { type, id, allOwners: [], inWorkspace, name } },
+        { provide: Router, useValue: routerSpy },
         { provide: ShareAccessService, useValue: accessServiceSpy },
         {
           provide: UserService,
@@ -125,6 +131,8 @@ describe("ShareAccessComponent", () => {
       updateDatasetPublicity: vi.fn().mockReturnValue(of(null)),
     };
     workflowActionSpy = { setWorkflowIsPublished: vi.fn() };
+    // nz-menu-item subscribes to Router.events, so the stub has to expose a stream.
+    routerSpy = { navigate: vi.fn(), events: EMPTY };
   });
 
   function getFooterButton(config: any, label: string): { onClick: () => void } {
@@ -714,6 +722,140 @@ describe("ShareAccessComponent", () => {
       datasetServiceSpy.updateDatasetPublicity.mockClear();
       c.unpublishDataset();
       expect(datasetServiceSpy.updateDatasetPublicity).not.toHaveBeenCalled();
+    });
+  });
+
+  describe("workflow share dialog", () => {
+    it("uses the redesigned layout for workflows", () => {
+      expect(setupComponent({ type: "workflow" }).isWorkflowShare).toBe(true);
+    });
+
+    it("keeps the previous layout for other entity types", () => {
+      expect(setupComponent({ type: "dataset" }).isWorkflowShare).toBe(false);
+    });
+
+    it("titles the dialog with the workflow name", () => {
+      expect(setupComponent({ name: "My workflow" }).dialogTitle).toBe("Share workflow “My workflow”");
+    });
+
+    it("falls back to a generic title when no workflow name was passed", () => {
+      expect(setupComponent({ name: "" }).dialogTitle).toBe("Share workflow");
+    });
+
+    it("labels privileges in sentence case", () => {
+      const c = setupComponent();
+      expect(c.privilegeLabel(Privilege.WRITE)).toBe("Write");
+      expect(c.privilegeLabel(Privilege.READ)).toBe("Read");
+    });
+
+    it("describes private visibility", () => {
+      workflowPersistSpy.getWorkflowIsPublished.mockReturnValue(of("Private"));
+      const c = setupComponent();
+      expect(c.visibilityLabel).toBe("Private");
+      expect(c.visibilityHint).toBe("Users cannot view this on Texera Hub.");
+    });
+
+    it("describes public visibility", () => {
+      workflowPersistSpy.getWorkflowIsPublished.mockReturnValue(of("Public"));
+      const c = setupComponent();
+      expect(c.visibilityLabel).toBe("Public");
+      expect(c.visibilityHint).toContain("Texera Hub");
+    });
+
+    it("routes visibility changes through the publish/unpublish confirmations", () => {
+      workflowPersistSpy.getWorkflowIsPublished.mockReturnValue(of("Private"));
+      const c = setupComponent();
+      c.setVisibility(true);
+      expect(capturedModalConfigs.at(-1)?.nzContent).toContain("Publishing your workflow");
+
+      c.isPublic = true;
+      c.setVisibility(false);
+      expect(capturedModalConfigs.at(-1)?.nzContent).toContain("lose access");
+    });
+
+    it("defaults new invitations to Write and grants at the chosen level", () => {
+      const c = setupComponent();
+      expect(c.inviteLevelLabel).toBe("Write");
+
+      c.setInviteLevel("READ");
+      expect(c.inviteLevel).toBe("READ");
+      expect(c.inviteLevelLabel).toBe("Read");
+
+      c.validateForm.get("email")?.setValue("reader@example.com");
+      c.onCollaboratorInputConfirm();
+      expect(accessServiceSpy.grantAccess).toHaveBeenCalledWith("workflow", 1, "reader@example.com", "READ");
+    });
+
+    it("reports whether the collaborator box has anything left to share", () => {
+      const c = setupComponent();
+      expect(c.hasPendingInvite).toBe(false);
+
+      c.validateForm.get("email")?.setValue("typed@example.com");
+      expect(c.hasPendingInvite).toBe(true);
+
+      c.validateForm.get("email")?.reset();
+      c.emailTags = ["tagged@example.com"];
+      expect(c.hasPendingInvite).toBe(true);
+    });
+
+    it("re-reads the owner and access list on reload", () => {
+      const c = setupComponent({ id: 3 });
+      accessServiceSpy.getAccessList.mockClear();
+      accessServiceSpy.getOwner.mockClear();
+      c.reloadAccessList();
+      expect(accessServiceSpy.getAccessList).toHaveBeenCalledWith("workflow", 3);
+      expect(accessServiceSpy.getOwner).toHaveBeenCalledWith("workflow", 3);
+    });
+
+    it("grants access as soon as a collaborator email is confirmed", () => {
+      const c = setupComponent();
+      c.validateForm.get("email")?.setValue("new@example.com");
+      c.onCollaboratorInputConfirm();
+      expect(accessServiceSpy.grantAccess).toHaveBeenCalledWith("workflow", 1, "new@example.com", "WRITE");
+      expect(c.emailTags).toEqual([]);
+    });
+
+    it("opens the versions panel without navigating when already in the workspace", () => {
+      const c = setupComponent({ inWorkspace: true });
+      const panelSpy = vi.spyOn(TestBed.inject(PanelService), "openVersionsPanel");
+      c.onClickEditVersion();
+      expect(panelSpy).toHaveBeenCalledTimes(1);
+      expect(routerSpy.navigate).not.toHaveBeenCalled();
+      expect(modalRefSpy.close).toHaveBeenCalledTimes(1);
+    });
+
+    it("navigates into the workspace when opening versions from the dashboard", () => {
+      const c = setupComponent({ inWorkspace: false, id: 42 });
+      const panelSpy = vi.spyOn(TestBed.inject(PanelService), "openVersionsPanel");
+      c.onClickEditVersion();
+      expect(panelSpy).toHaveBeenCalledTimes(1);
+      expect(routerSpy.navigate).toHaveBeenCalledWith([USER_WORKSPACE, 42]);
+    });
+
+    it("closes immediately on Done when nothing is pending", () => {
+      const c = setupComponent();
+      c.onClickDone();
+      expect(accessServiceSpy.grantAccess).not.toHaveBeenCalled();
+      expect(modalRefSpy.close).toHaveBeenCalledTimes(1);
+    });
+
+    it("grants emails left in the box before closing on Done", () => {
+      const c = setupComponent();
+      c.emailTags = ["a@example.com", "b@example.com"];
+      c.onClickDone();
+      expect(accessServiceSpy.grantAccess).toHaveBeenCalledTimes(2);
+      expect(modalRefSpy.close).toHaveBeenCalledTimes(1);
+    });
+
+    it("still closes on Done when a pending grant fails", () => {
+      const c = setupComponent();
+      accessServiceSpy.grantAccess.mockReturnValue(
+        throwError(() => new HttpErrorResponse({ error: { message: "nope" } }))
+      );
+      c.emailTags = ["a@example.com"];
+      c.onClickDone();
+      expect(notificationSpy.error).toHaveBeenCalledWith("nope");
+      expect(modalRefSpy.close).toHaveBeenCalledTimes(1);
     });
   });
 });

@@ -18,158 +18,394 @@
 -->
 
 <div
-  class="access-button-group"
-  *ngIf="isPublic !== null && type !== 'computing-unit'">
-  <button
-    nz-button
-    class="access-button"
-    [nzType]="isPublic ? 'default' : 'primary'"
-    (click)="verifyUnpublish()"
-    [disabled]="!hasWriteAccess">
-    <div
-      nz-icon
-      nzType="lock"
-      nzTheme="outline"
-      class="button-icon"></div>
-    <div class="button-text">
-      <div class="button-text-header">Private</div>
-      <p>Only collaborators can view this workflow {{ type }}</p>
+  *ngIf="isWorkflowShare; else legacyLayout"
+  class="share-dialog"
+  [formGroup]="validateForm">
+  <h2 class="share-dialog-title">{{ dialogTitle }}</h2>
+
+  <div
+    class="collaborator-field"
+    [class.collaborator-field-disabled]="!hasWriteAccess"
+    (click)="collaboratorInput.focus()">
+    <span class="collaborator-legend">Add collaborators via email</span>
+    <div class="collaborator-entry">
+      <nz-tag
+        *ngFor="let email of emailTags"
+        class="collaborator-tag"
+        nzMode="closeable"
+        (nzOnClose)="removeEmailTag(email)">
+        {{ email }}
+      </nz-tag>
+      <input
+        #collaboratorInput
+        id="email"
+        class="collaborator-input"
+        type="text"
+        formControlName="email"
+        [readonly]="!hasWriteAccess"
+        [placeholder]="emailTags.length ? '' : 'name@example.com'"
+        [(ngModel)]="ownerSearchValue"
+        (ngModelChange)="onChange($event)"
+        (paste)="onPaste($event)"
+        (keydown.enter)="onCollaboratorInputConfirm($event)"
+        [nzAutocomplete]="collaboratorAuto" />
+      <nz-autocomplete
+        #collaboratorAuto
+        [nzDefaultActiveFirstOption]="false"
+        [nzDataSource]="filteredOwners"
+        nzBackfill></nz-autocomplete>
     </div>
-  </button>
 
-  <button
-    nz-button
-    class="access-button"
-    [nzType]="isPublic ? 'primary' : 'default'"
-    (click)="verifyPublish()"
-    [disabled]="!hasWriteAccess">
-    <div
-      nz-icon
-      nzType="user"
-      nzTheme="outline"
-      class="button-icon"></div>
-    <div class="button-text">
-      <div class="button-text-header">Public</div>
-      <p>Anyone on Texera can find and view this {{ type }}</p>
-    </div>
-  </button>
-</div>
-
-<form
-  [formGroup]="validateForm"
-  (ngSubmit)="grantAccess()">
-  <div class="form-group">
-    <nz-card nzTitle="Target User">
-      <nz-form-item>
-        <nz-form-label
-          [nzSm]="6"
-          [nzXs]="24"
-          nzRequired
-          nzFor="email"
-          >E-mails</nz-form-label
-        >
-        <nz-form-control
-          [nzSm]="14"
-          [nzXs]="24"
-          nzErrorTip="The input is not valid E-mail!">
-          <div class="input-group">
-            <input
-              nz-input
-              id="email"
-              type="text"
-              formControlName="email"
-              (paste)="onPaste($event)"
-              [(ngModel)]="ownerSearchValue"
-              (ngModelChange)="onChange($event)"
-              [nzAutocomplete]="auto" />
-            <button
-              nz-button
-              nzType="primary"
-              (click)="handleInputConfirm($event)"
-              class="add-button">
-              +
-            </button>
-          </div>
-          <nz-autocomplete
-            [nzDefaultActiveFirstOption]="false"
-            [nzDataSource]="filteredOwners"
-            nzBackfill
-            #auto></nz-autocomplete>
-        </nz-form-control>
-      </nz-form-item>
-      <nz-form-item>
-        <nz-form-control
-          [nzSm]="24"
-          [nzXs]="24">
-          <div style="max-height: 200px; overflow-y: auto">
-            <nz-tag
-              *ngFor="let email of emailTags"
-              nzMode="closeable"
-              (nzOnClose)="removeEmailTag(email)">
-              {{ email }}
-            </nz-tag>
-          </div>
-        </nz-form-control>
-      </nz-form-item>
-    </nz-card>
-    <br />
-
-    <nz-card nzTitle="Share">
-      <div style="height: 50px">
-        Access Level:
-        <select formControlName="accessLevel">
-          <option value="READ">read</option>
-          <option value="WRITE">write</option>
-        </select>
-      </div>
+    <div class="collaborator-actions">
       <button
+        nz-button
+        nzType="text"
+        nzSize="small"
+        type="button"
+        class="collaborator-level"
         [disabled]="!hasWriteAccess"
-        style="width: 100%"
+        nz-dropdown
+        nzTrigger="click"
+        [nzDropdownMenu]="inviteLevelMenu">
+        {{ inviteLevelLabel }}
+        <i
+          nz-icon
+          nzType="caret-down"
+          nzTheme="outline"></i>
+      </button>
+      <nz-dropdown-menu #inviteLevelMenu="nzDropdownMenu">
+        <ul nz-menu>
+          <li
+            nz-menu-item
+            (click)="setInviteLevel('READ')">
+            Read
+          </li>
+          <li
+            nz-menu-item
+            (click)="setInviteLevel('WRITE')">
+            Write
+          </li>
+        </ul>
+      </nz-dropdown-menu>
+
+      <button
         nz-button
         nzType="primary"
-        type="submit">
+        nzSize="small"
+        type="button"
+        [disabled]="!hasWriteAccess || !hasPendingInvite"
+        (click)="onCollaboratorInputConfirm($event)">
         Share
       </button>
-    </nz-card>
+    </div>
   </div>
-</form>
-<br />
-<button
-  (click)="ngOnInit()"
-  nz-button
-  nz-tooltip="reload all accesses"
-  nzSize="small"
-  nzTooltipPlacement="bottom">
-  <i
-    nz-icon
-    nzTheme="outline"
-    nzType="reload"></i>
-</button>
-<label for="current-share">Access:</label>
-<ul
-  class="current-share"
-  id="current-share">
-  <li><nz-tag nzColor="green">OWNER</nz-tag> {{ owner }}</li>
-  <li *ngFor="let entry of accessList">
-    <select
-      [value]="entry.privilege"
-      [disabled]="!hasWriteAccess"
-      (change)="changeAccessLevel(entry.email, $any($event.target).value)">
-      <option value="READ">READ</option>
-      <option value="WRITE">WRITE</option>
-    </select>
-    {{ entry.email }} ({{ entry.name }})
+
+  <div>
+    <div class="share-section-header">
+      <h3 class="share-section-title">Users with Access</h3>
+      <button
+        nz-button
+        nzType="text"
+        nzShape="circle"
+        nzSize="small"
+        type="button"
+        class="share-section-action"
+        nz-tooltip="Reload access list"
+        nzTooltipPlacement="bottom"
+        (click)="reloadAccessList()">
+        <i
+          nz-icon
+          nzType="reload"
+          nzTheme="outline"></i>
+      </button>
+    </div>
+
+    <div
+      *ngIf="owner"
+      class="access-row">
+      <texera-user-avatar
+        [userName]="owner"
+        userColor="#1e90ff"></texera-user-avatar>
+      <div class="access-row-identity">
+        <span class="access-row-name">{{ owner }}</span>
+      </div>
+      <div class="access-row-control access-row-control-static">Owner</div>
+    </div>
+
+    <div
+      *ngFor="let entry of accessList"
+      class="access-row">
+      <texera-user-avatar
+        [userName]="entry.name || entry.email"
+        userColor="#1e90ff"></texera-user-avatar>
+      <div class="access-row-identity">
+        <span class="access-row-name">{{ entry.name || entry.email }}</span>
+        <span class="access-row-email">{{ entry.email }}</span>
+      </div>
+
+      <div class="access-row-control">
+        <button
+          nz-button
+          nzType="text"
+          type="button"
+          class="access-row-privilege"
+          [disabled]="!hasWriteAccess && entry.email !== currentEmail"
+          nz-dropdown
+          nzTrigger="click"
+          [nzDropdownMenu]="privilegeMenu">
+          {{ privilegeLabel(entry.privilege) }}
+          <i
+            nz-icon
+            nzType="caret-down"
+            nzTheme="outline"></i>
+        </button>
+        <nz-dropdown-menu #privilegeMenu="nzDropdownMenu">
+          <ul nz-menu>
+            <li
+              nz-menu-item
+              [nzDisabled]="!hasWriteAccess"
+              (click)="changeAccessLevel(entry.email, 'READ')">
+              Read
+            </li>
+            <li
+              nz-menu-item
+              [nzDisabled]="!hasWriteAccess"
+              (click)="changeAccessLevel(entry.email, 'WRITE')">
+              Write
+            </li>
+            <li nz-menu-divider></li>
+            <li
+              nz-menu-item
+              nzDanger
+              (click)="verifyRevokeAccess(entry.email)">
+              Remove user
+            </li>
+          </ul>
+        </nz-dropdown-menu>
+      </div>
+    </div>
+
+    <div
+      *ngIf="!owner && accessList.length === 0"
+      class="access-list-empty">
+      No one else has access yet.
+    </div>
+  </div>
+
+  <div *ngIf="isPublic !== null">
+    <h3 class="share-section-title">General Access</h3>
+    <div class="visibility-row">
+      <div class="visibility-label">
+        <div class="visibility-label-title">Visibility</div>
+        <div class="visibility-label-hint">{{ visibilityHint }}</div>
+      </div>
+      <div class="access-row-control">
+        <button
+          nz-button
+          nzType="text"
+          type="button"
+          class="visibility-select"
+          [disabled]="!hasWriteAccess"
+          nz-dropdown
+          nzTrigger="click"
+          [nzDropdownMenu]="visibilityMenu">
+          {{ visibilityLabel }}
+          <i
+            nz-icon
+            nzType="caret-down"
+            nzTheme="outline"></i>
+        </button>
+        <nz-dropdown-menu #visibilityMenu="nzDropdownMenu">
+          <ul nz-menu>
+            <li
+              nz-menu-item
+              (click)="setVisibility(false)">
+              Private
+            </li>
+            <li
+              nz-menu-item
+              (click)="setVisibility(true)">
+              Public
+            </li>
+          </ul>
+        </nz-dropdown-menu>
+      </div>
+    </div>
+  </div>
+
+  <div class="share-dialog-footer">
     <button
-      [disabled]="!hasWriteAccess && entry.email !== currentEmail"
-      (click)="verifyRevokeAccess(entry.email)"
       nz-button
-      nz-tooltip="revoke access"
-      nzSize="small"
-      nzTooltipPlacement="bottom">
-      <i
-        nz-icon
-        nzTheme="outline"
-        nzType="delete"></i>
+      type="button"
+      (click)="onClickEditVersion()">
+      Edit Version
     </button>
-  </li>
-</ul>
+    <span class="share-dialog-footer-spacer"></span>
+    <button
+      nz-button
+      nzType="primary"
+      type="button"
+      (click)="onClickDone()">
+      Done
+    </button>
+  </div>
+</div>
+
+<ng-template #legacyLayout>
+  <div
+    class="access-button-group"
+    *ngIf="isPublic !== null && type !== 'computing-unit'">
+    <button
+      nz-button
+      class="access-button"
+      [nzType]="isPublic ? 'default' : 'primary'"
+      (click)="verifyUnpublish()"
+      [disabled]="!hasWriteAccess">
+      <div
+        nz-icon
+        nzType="lock"
+        nzTheme="outline"
+        class="button-icon"></div>
+      <div class="button-text">
+        <div class="button-text-header">Private</div>
+        <p>Only collaborators can view this workflow {{ type }}</p>
+      </div>
+    </button>
+
+    <button
+      nz-button
+      class="access-button"
+      [nzType]="isPublic ? 'primary' : 'default'"
+      (click)="verifyPublish()"
+      [disabled]="!hasWriteAccess">
+      <div
+        nz-icon
+        nzType="user"
+        nzTheme="outline"
+        class="button-icon"></div>
+      <div class="button-text">
+        <div class="button-text-header">Public</div>
+        <p>Anyone on Texera can find and view this {{ type }}</p>
+      </div>
+    </button>
+  </div>
+
+  <form
+    [formGroup]="validateForm"
+    (ngSubmit)="grantAccess()">
+    <div class="form-group">
+      <nz-card nzTitle="Target User">
+        <nz-form-item>
+          <nz-form-label
+            [nzSm]="6"
+            [nzXs]="24"
+            nzRequired
+            nzFor="email"
+            >E-mails</nz-form-label
+          >
+          <nz-form-control
+            [nzSm]="14"
+            [nzXs]="24"
+            nzErrorTip="The input is not valid E-mail!">
+            <div class="input-group">
+              <input
+                nz-input
+                id="email"
+                type="text"
+                formControlName="email"
+                (paste)="onPaste($event)"
+                [(ngModel)]="ownerSearchValue"
+                (ngModelChange)="onChange($event)"
+                [nzAutocomplete]="auto" />
+              <button
+                nz-button
+                nzType="primary"
+                (click)="handleInputConfirm($event)"
+                class="add-button">
+                +
+              </button>
+            </div>
+            <nz-autocomplete
+              [nzDefaultActiveFirstOption]="false"
+              [nzDataSource]="filteredOwners"
+              nzBackfill
+              #auto></nz-autocomplete>
+          </nz-form-control>
+        </nz-form-item>
+        <nz-form-item>
+          <nz-form-control
+            [nzSm]="24"
+            [nzXs]="24">
+            <div style="max-height: 200px; overflow-y: auto">
+              <nz-tag
+                *ngFor="let email of emailTags"
+                nzMode="closeable"
+                (nzOnClose)="removeEmailTag(email)">
+                {{ email }}
+              </nz-tag>
+            </div>
+          </nz-form-control>
+        </nz-form-item>
+      </nz-card>
+      <br />
+
+      <nz-card nzTitle="Share">
+        <div style="height: 50px">
+          Access Level:
+          <select formControlName="accessLevel">
+            <option value="READ">read</option>
+            <option value="WRITE">write</option>
+          </select>
+        </div>
+        <button
+          [disabled]="!hasWriteAccess"
+          style="width: 100%"
+          nz-button
+          nzType="primary"
+          type="submit">
+          Share
+        </button>
+      </nz-card>
+    </div>
+  </form>
+  <br />
+  <button
+    (click)="ngOnInit()"
+    nz-button
+    nz-tooltip="reload all accesses"
+    nzSize="small"
+    nzTooltipPlacement="bottom">
+    <i
+      nz-icon
+      nzTheme="outline"
+      nzType="reload"></i>
+  </button>
+  <label for="current-share">Access:</label>
+  <ul
+    class="current-share"
+    id="current-share">
+    <li><nz-tag nzColor="green">OWNER</nz-tag> {{ owner }}</li>
+    <li *ngFor="let entry of accessList">
+      <select
+        [value]="entry.privilege"
+        [disabled]="!hasWriteAccess"
+        (change)="changeAccessLevel(entry.email, $any($event.target).value)">
+        <option value="READ">READ</option>
+        <option value="WRITE">WRITE</option>
+      </select>
+      {{ entry.email }} ({{ entry.name }})
+      <button
+        [disabled]="!hasWriteAccess && entry.email !== currentEmail"
+        (click)="verifyRevokeAccess(entry.email)"
+        nz-button
+        nz-tooltip="revoke access"
+        nzSize="small"
+        nzTooltipPlacement="bottom">
+        <i
+          nz-icon
+          nzTheme="outline"
+          nzType="delete"></i>
+      </button>
+    </li>
+  </ul>
+</ng-template>

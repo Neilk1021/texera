@@ -327,11 +327,12 @@ export class MenuComponent implements OnInit, OnDestroy {
         id: this.workflowId,
         allOwners: await firstValueFrom(this.workflowPersistService.retrieveOwners()),
         inWorkspace: true,
+        name: this.currentWorkflowName,
       },
       nzFooter: null,
-      nzTitle: "Share this workflow with others",
+      // The workflow share dialog renders its own title, so the modal has no header.
       nzCentered: true,
-      nzWidth: "800px",
+      nzWidth: "520px",
     });
 
     modalRef.afterClose.pipe(untilDestroyed(this)).subscribe(result => {

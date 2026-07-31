@@ -199,10 +199,12 @@ export class UserWorkflowListItemComponent {
         type: "workflow",
         id: this.workflow.wid,
         allOwners: await firstValueFrom(this.workflowPersistService.retrieveOwners()),
+        name: this.workflow.name,
       },
       nzFooter: null,
-      nzTitle: "Share this workflow with others",
+      // The workflow share dialog renders its own title, so the modal has no header.
       nzCentered: true,
+      nzWidth: "520px",
     });
   }
 

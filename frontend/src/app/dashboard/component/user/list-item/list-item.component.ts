@@ -221,11 +221,12 @@ export class ListItemComponent implements OnChanges {
           id: this.entry.id,
           allOwners: await firstValueFrom(this.workflowPersistService.retrieveOwners()),
           inWorkspace: false,
+          name: this.entry.name,
         },
         nzFooter: null,
-        nzTitle: "Share this workflow with others",
+        // The workflow share dialog renders its own title, so the modal has no header.
         nzCentered: true,
-        nzWidth: "700px",
+        nzWidth: "520px",
       });
     } else if (this.entry.type === "dataset") {
       modal = this.modalService.create({

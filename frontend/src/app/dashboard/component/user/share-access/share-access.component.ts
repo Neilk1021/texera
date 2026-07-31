@@ -18,6 +18,7 @@
  */
 
 import { Component, EventEmitter, inject, OnDestroy, OnInit, Output } from "@angular/core";
+import { catchError, forkJoin, Observable, of, tap } from "rxjs";
 import { FormBuilder, FormControl, FormGroup, Validators, FormsModule, ReactiveFormsModule } from "@angular/forms";
 import { ShareAccessService } from "../../../service/user/share-access/share-access.service";
 import { Privilege, ShareAccess } from "../../../type/share-access.interface";
@@ -27,7 +28,7 @@ import { GmailService } from "../../../../common/service/gmail/gmail.service";
 import { NZ_MODAL_DATA, NzModalRef, NzModalService } from "ng-zorro-antd/modal";
 import { NotificationService } from "../../../../common/service/notification/notification.service";
 import { HttpErrorResponse } from "@angular/common/http";
-import { USER_DATASET, USER_PROJECT, USER_WORKFLOW } from "../../../../app-routing.constant";
+import { USER_DATASET, USER_PROJECT, USER_WORKFLOW, USER_WORKSPACE } from "../../../../app-routing.constant";
 import { NzMessageService } from "ng-zorro-antd/message";
 import { DatasetService } from "../../../service/user/dataset/dataset.service";
 import { WorkflowPersistService } from "src/app/common/service/workflow-persist/workflow-persist.service";
@@ -45,6 +46,11 @@ import { NzInputDirective } from "ng-zorro-antd/input";
 import { NzAutocompleteTriggerDirective, NzAutocompleteComponent } from "ng-zorro-antd/auto-complete";
 import { NzTagComponent } from "ng-zorro-antd/tag";
 import { NzTooltipDirective } from "ng-zorro-antd/tooltip";
+import { NzDropdownDirective, NzDropdownMenuComponent } from "ng-zorro-antd/dropdown";
+import { NzMenuDirective, NzMenuDividerDirective, NzMenuItemComponent } from "ng-zorro-antd/menu";
+import { Router } from "@angular/router";
+import { PanelService } from "src/app/workspace/service/panel/panel.service";
+import { UserAvatarComponent } from "../user-avatar/user-avatar.component";
 
 @UntilDestroy()
 @Component({
@@ -72,6 +78,12 @@ import { NzTooltipDirective } from "ng-zorro-antd/tooltip";
     NgFor,
     NzTagComponent,
     NzTooltipDirective,
+    NzDropdownDirective,
+    NzDropdownMenuComponent,
+    NzMenuDirective,
+    NzMenuItemComponent,
+    NzMenuDividerDirective,
+    UserAvatarComponent,
   ],
 })
 export class ShareAccessComponent implements OnInit, OnDestroy {
@@ -80,6 +92,7 @@ export class ShareAccessComponent implements OnInit, OnDestroy {
   readonly id: number = this.nzModalData.id;
   readonly allOwners: string[] = this.nzModalData.allOwners;
   readonly inWorkspace: boolean = this.nzModalData.inWorkspace;
+  readonly entityName: string = this.nzModalData.name ?? "";
   public validateForm: FormGroup;
   public accessList: ReadonlyArray<ShareAccess> = [];
   public owner: string = "";
@@ -102,7 +115,9 @@ export class ShareAccessComponent implements OnInit, OnDestroy {
     private workflowPersistService: WorkflowPersistService,
     private datasetService: DatasetService,
     private workflowActionService: WorkflowActionService,
-    private modalRef: NzModalRef
+    private modalRef: NzModalRef,
+    private router: Router,
+    private panelService: PanelService
   ) {
     this.validateForm = this.formBuilder.group({
       email: [null, Validators.email],
@@ -120,6 +135,98 @@ export class ShareAccessComponent implements OnInit, OnDestroy {
     }
     const currentUserAccess = this.accessList.find(entry => entry.email === this.currentEmail);
     return currentUserAccess?.privilege === Privilege.WRITE;
+  }
+
+  /** The redesigned dialog only covers workflows; the other types keep the previous layout. */
+  get isWorkflowShare(): boolean {
+    return this.type === "workflow";
+  }
+
+  get dialogTitle(): string {
+    return this.entityName ? `Share workflow “${this.entityName}”` : "Share workflow";
+  }
+
+  get visibilityLabel(): string {
+    return this.isPublic ? "Public" : "Private";
+  }
+
+  get visibilityHint(): string {
+    return this.isPublic
+      ? `Anyone can find, view and clone this ${this.type} on Texera Hub.`
+      : "Users cannot view this on Texera Hub.";
+  }
+
+  public privilegeLabel(privilege: Privilege): string {
+    return privilege === Privilege.WRITE ? "Write" : "Read";
+  }
+
+  public setVisibility(makePublic: boolean): void {
+    if (makePublic) {
+      this.verifyPublish();
+    } else {
+      this.verifyUnpublish();
+    }
+  }
+
+  /** The access level new collaborators will be granted. */
+  get inviteLevel(): string {
+    return this.validateForm.value.accessLevel;
+  }
+
+  get inviteLevelLabel(): string {
+    return this.inviteLevel === Privilege.WRITE ? "Write" : "Read";
+  }
+
+  public setInviteLevel(level: string): void {
+    this.validateForm.patchValue({ accessLevel: level });
+  }
+
+  /** Whether the collaborator box holds anything that can still be shared. */
+  get hasPendingInvite(): boolean {
+    return this.emailTags.length > 0 || !!this.validateForm.get("email")?.value;
+  }
+
+  /** Re-reads the owner, access list and publish state, picking up other users' changes. */
+  public reloadAccessList(): void {
+    this.ngOnInit();
+  }
+
+  /**
+   * Adds whatever is in the collaborator box as collaborators. Access is granted right away so the
+   * new collaborators show up in the list below, matching how the rest of this dialog behaves.
+   */
+  public onCollaboratorInputConfirm(event?: Event): void {
+    this.handleInputConfirm(event);
+    this.grantAccess();
+  }
+
+  public onClickEditVersion(): void {
+    this.panelService.openVersionsPanel();
+    this.modalRef.close();
+    if (!this.inWorkspace) {
+      this.router.navigate([USER_WORKSPACE, this.id]);
+    }
+  }
+
+  /**
+   * Closes the dialog. Emails that were typed but never confirmed are granted first, and the close
+   * is deferred until those requests settle — closing destroys this component, which would cancel
+   * them mid-flight.
+   */
+  public onClickDone(): void {
+    this.handleInputConfirm();
+    const pendingEmails = this.emailTags;
+    if (pendingEmails.length === 0) {
+      this.modalRef.close();
+      return;
+    }
+    this.emailTags = [];
+    // Deliberately not tied to untilDestroyed: this subscription is what closes the dialog, so
+    // tearing it down on destroy would cancel the very requests it is waiting for.
+    // eslint-disable-next-line rxjs-angular/prefer-takeuntil
+    forkJoin(pendingEmails.map(email => this.grantAccessTo(email).pipe(catchError(() => of(null))))).subscribe(() =>
+      this.modalRef.close()
+    );
   }
 
   ngOnInit(): void {
@@ -188,37 +295,48 @@ export class ShareAccessComponent implements OnInit, OnDestroy {
   public grantAccess(): void {
     this.handleInputConfirm();
     if (this.emailTags.length > 0) {
-      this.emailTags.forEach(email => {
-        let message = `${this.userService.getCurrentUser()?.email} shared a ${this.type} with you`;
-        if (this.type !== "computing-unit") {
-          let routePath = "";
-          if (this.type === "workflow") routePath = USER_WORKFLOW;
-          if (this.type === "dataset") routePath = USER_DATASET;
-          if (this.type === "project") routePath = USER_PROJECT;
-          message += `, access the ${this.type} at ${location.origin}${routePath}/${this.id}`;
-        }
-        this.accessService
-          .grantAccess(this.type, this.id, email, this.validateForm.value.accessLevel)
+      // Failures are already surfaced by grantAccessTo, so the error callback only stops RxJS from
+      // reporting them as unhandled.
+      this.emailTags.forEach(email =>
+        this.grantAccessTo(email)
           .pipe(untilDestroyed(this))
-          .subscribe({
-            next: () => {
-              this.notificationService.success(this.type + " shared with " + email + " successfully.");
-              this.gmailService.sendEmail(
-                "Texera: " + this.userService.getCurrentUser()?.email + " shared a " + this.type + " with you",
-                message,
-                email
-              );
-              this.ngOnInit();
-            },
-            error: (error: unknown) => {
-              if (error instanceof HttpErrorResponse) {
-                this.notificationService.error(error.error.message);
-              }
-            },
-          });
-      });
+          .subscribe({ error: () => {} })
+      );
       this.emailTags = [];
     }
+  }
+
+  /**
+   * Grants the configured access level to a single email, notifying the recipient on success. The
+   * returned observable is cold: callers decide the subscription's lifetime.
+   */
+  private grantAccessTo(email: string): Observable<void> {
+    let message = `${this.userService.getCurrentUser()?.email} shared a ${this.type} with you`;
+    if (this.type !== "computing-unit") {
+      let routePath = "";
+      if (this.type === "workflow") routePath = USER_WORKFLOW;
+      if (this.type === "dataset") routePath = USER_DATASET;
+      if (this.type === "project") routePath = USER_PROJECT;
+      message += `, access the ${this.type} at ${location.origin}${routePath}/${this.id}`;
+    }
+    return this.accessService.grantAccess(this.type, this.id, email, this.validateForm.value.accessLevel).pipe(
+      tap({
+        next: () => {
+          this.notificationService.success(this.type + " shared with " + email + " successfully.");
+          this.gmailService.sendEmail(
+            "Texera: " + this.userService.getCurrentUser()?.email + " shared a " + this.type + " with you",
+            message,
+            email
+          );
+          this.ngOnInit();
+        },
+        error: (error: unknown) => {
+          if (error instanceof HttpErrorResponse) {
+            this.notificationService.error(error.error.message);
+          }
+        },
+      })
+    );
   }
 
   public onPaste(event: ClipboardEvent): void {

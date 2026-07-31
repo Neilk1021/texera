@@ -736,8 +736,10 @@ describe("CardItemComponent", () => {
         id: 7,
         allOwners: ["alice", "bob"],
         inWorkspace: false,
+        name: "wf",
       });
-      expect(cfg.nzTitle).toBe("Share this workflow with others");
+      // The workflow share dialog renders its own title, so the modal is headerless.
+      expect(cfg.nzTitle).toBeUndefined();
 
       const refreshSpy = vi.fn();
       const refreshSub = component.refresh.subscribe(refreshSpy);
