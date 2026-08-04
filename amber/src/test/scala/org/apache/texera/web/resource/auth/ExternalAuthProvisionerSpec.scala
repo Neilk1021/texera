@@ -44,7 +44,7 @@ class ExternalAuthProvisionerSpec
     with MockTexeraDB {
 
   // All test users share this email suffix so cleanup can target them precisely;
-  // the auth_provider FK is ON DELETE CASCADE, so deleting the user clears its rows.
+  // the auth_provider FK is ON DELETE CASCADE, so deleting the user clezars its rows.
   private val emailDomain = "@provisioner-test.com"
 
   private var userDao: UserDao = _
