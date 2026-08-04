@@ -74,10 +74,12 @@ object ExternalAuthProvisioner extends LazyLogging {
     */
   private[auth] def sanitizedAvatar(profile: ExternalProfile): Option[String] =
     profile.avatar.filter { url =>
-      val host = Try(URI.create(url)).toOption.filter { uri =>
-        val scheme = Option(uri.getScheme).map(_.toLowerCase)
-        scheme.contains("http") || scheme.contains("https")
-      }.flatMap(uri => Option(uri.getHost))
+      val host = Try(URI.create(url)).toOption
+        .filter { uri =>
+          val scheme = Option(uri.getScheme).map(_.toLowerCase)
+          scheme.contains("http") || scheme.contains("https")
+        }
+        .flatMap(uri => Option(uri.getHost))
 
       val allowed = host.exists(isAllowedAvatarHost)
       if (!allowed) {
@@ -133,13 +135,21 @@ object ExternalAuthProvisioner extends LazyLogging {
           val user = Option(txUserDao.fetchOneByEmail(profile.email)) match {
             case Some(existing) =>
               existing.tap { user =>
-                if (refresh(user, profile)) txUserDao.update(user)
+                // A placeholder account (auto-created for a dataset contributor, never had a
+                // credential) is claimed by the first external identity that proves ownership
+                // of its email. It keeps its uid, so existing contributor links stay valid.
+                // Reaching here already required profile.emailVerified.
+                val claimed = user.getIsPlaceholder
+                if (claimed) AuthResource.claimPlaceholder(user)
+                // refresh() must run regardless so its mutations are applied
+                val drifted = refresh(user, profile)
+                if (drifted || claimed) txUserDao.update(user)
               }
             case None =>
               val created = new User()
               created.setName(profile.name)
               created.setEmail(profile.email)
-              profile.avatar.foreach(created.setAvatar)
+              sanitizedAvatar(profile).foreach(created.setAvatar)
               created.setRole(UserRoleEnum.INACTIVE)
               try {
                 txUserDao.insert(created)
@@ -185,7 +195,7 @@ object ExternalAuthProvisioner extends LazyLogging {
       user.setEmail(profile.email)
       changed = true
     }
-    profile.avatar.foreach { avatar =>
+    sanitizedAvatar(profile).foreach { avatar =>
       if (user.getAvatar != avatar) {
         user.setAvatar(avatar)
         changed = true
